@@ -34,7 +34,34 @@ $ qvm-start ktest
 ```
 
 `--localversion` (default `-qubes-test`) and `-j/--jobs` (default: all CPUs) are
-the two options worth setting.
+the two options worth setting. `fetch_config.py --base-config PATH` seeds from a
+specific config instead of auto-detecting — point it at a `config-base-*` from
+Qubes' `get-fedora-latest-config`, or a config pulled from a `kernel-core` RPM,
+when the build qube's own config is not the one you want to start from.
+
+## What has actually been run
+
+Static: `compileall` and `pyflakes` clean; `--help` on every entry point.
+
+Against a real Linux v7.1 tree with real `make`/kconfig, seeded from Qubes'
+genuine Fedora-derived `config-base`:
+
+* `fetch_config.py` end-to-end — merge, `alldefconfig`, verification, and the
+  correct `kernelrelease`. Its verifier caught two symbols
+  (`GCC_PLUGINS`, `GCC_PLUGIN_LATENT_ENTROPY`) genuinely dropped for a missing
+  build dependency, failed the run, and passed 82/82 once that was installed.
+* `build.py` end-to-end on a reduced config — `make`, `modules_install`, and an
+  image installed to `/boot` under a name matching `/lib/modules`, verified as a
+  real bzImage carrying the expected version string.
+* `package_vm_kernel.py` with `qubes-prepare-vm-kernel` stubbed — both branches
+  of the memory-hotplug marker, the kernelopts file, and both precondition guards.
+* `dom0_install_vm_kernel.py` with the qvm-* tools stubbed and a separate source
+  root — a byte-identical import, plus the in-use refusal, the missing-`vmlinuz`
+  refusal, and error propagation out of the tar pipeline.
+
+Not run anywhere: `dnf` (this was a Debian-family box), `qubes-prepare-vm-kernel`
+itself, and any actual qube boot. Those rest on the upstream sources cited in the
+top-level README.
 
 ## Where shell survives, and why
 

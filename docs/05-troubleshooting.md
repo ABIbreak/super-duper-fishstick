@@ -90,7 +90,9 @@ dom0:
 ```
 
 A `CONFIG_LOCALVERSION` change between `make modules_install` and
-`qubes-prepare-vm-kernel` is the usual cause of a mismatch.
+`qubes-prepare-vm-kernel` is one cause of a mismatch. The other, easy to hit
+by hand, is naming the image in `/boot` from a stale `make kernelrelease` —
+see [02 §2.5](02-building.md#25-version-identification).
 
 ### The qube boots but has no network
 

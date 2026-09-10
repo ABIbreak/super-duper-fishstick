@@ -86,9 +86,21 @@ def fetch_source(version, srcdir):
     tar.unlink()
 
 
-def seed_config(srcdir):
+def seed_config(srcdir, base_config=None):
     """Start from a Fedora config, by preference the running Qubes kernel's."""
     dest = srcdir / ".config"
+
+    if base_config:
+        # An explicit base, e.g. a config-base-* produced by Qubes'
+        # get-fedora-latest-config, or any config pulled from a kernel-core RPM.
+        source = Path(base_config)
+        if not source.is_file():
+            c.die(f"--base-config not found: {source}")
+        if source.suffix == ".gz":
+            dest.write_bytes(gzip.decompress(source.read_bytes()))
+        else:
+            shutil.copy(source, dest)
+        return str(source)
 
     running = Path("/proc/config.gz")
     if running.exists():
@@ -148,6 +160,10 @@ def main():
     ap.add_argument("--localversion", default="-qubes-test",
                     help="CONFIG_LOCALVERSION suffix (default: %(default)s)")
     ap.add_argument("--fragment", help="kconfig fragment (default: config/qubes-vm.config)")
+    ap.add_argument("--base-config",
+                    help="seed from this config file instead of auto-detecting "
+                         "(e.g. a config-base-* from Qubes' get-fedora-latest-config); "
+                         "a .gz is decompressed")
     args = ap.parse_args()
 
     c.require_vm("fetch_config.py")
@@ -163,7 +179,7 @@ def main():
     fetch_source(args.version, srcdir)
 
     c.info("Seeding .config")
-    print(f"    from {seed_config(srcdir)}")
+    print(f"    from {seed_config(srcdir, args.base_config)}")
     c.run(["make", "olddefconfig"], cwd=srcdir, quiet=True)
 
     c.info(f"Merging {fragment}")
@@ -193,7 +209,7 @@ def main():
               "Fix their dependencies before building.")
 
     print(f"    {checked} symbols checked, all present")
-    c.info(f"OK. kernelrelease = {c.out(['make', '-s', 'kernelrelease'], cwd=srcdir)}")
+    c.info(f"OK. kernelrelease = {c.kernelrelease(srcdir)}")
     print(f"    next: scripts/build.py {srcdir}")
 
 

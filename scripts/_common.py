@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 # Qubes marks a VM with this file; dom0 has /etc/qubes-release and no marker.
 _MARKER_VM = "/usr/share/qubes/marker-vm"
@@ -46,8 +47,16 @@ def require_dom0(what="This"):
         die(f"{what} must run in dom0, not in a qube.")
 
 
+# sudo's secure_path includes the sbin directories, but a regular user's PATH
+# on Fedora may not. qubes-prepare-vm-kernel installs to /usr/sbin, so a plain
+# which() would report it missing for exactly the users who can still run it.
+_SBIN_DIRS = ("/usr/local/sbin", "/usr/sbin", "/sbin")
+
+
 def have(tool):
-    return shutil.which(tool) is not None
+    if shutil.which(tool) is not None:
+        return True
+    return any(os.access(os.path.join(d, tool), os.X_OK) for d in _SBIN_DIRS)
 
 
 def run(cmd, *, cwd=None, check=True, quiet=False, capture=False, env=None):
@@ -70,6 +79,24 @@ def run(cmd, *, cwd=None, check=True, quiet=False, capture=False, env=None):
 def out(cmd, *, cwd=None):
     """Capture stdout of a command, stripped. Raises on failure."""
     return run(cmd, cwd=cwd, capture=True, quiet=True).strip()
+
+
+def kernelrelease(srcdir):
+    """The kernel's `uname -r` string, computed reliably.
+
+    `make kernelrelease` just echoes KERNELRELEASE, which is read from a cached
+    include/config/kernel.release -- and `kernelrelease` is listed in the
+    Makefile's no-sync-config-targets, so nothing regenerates that file. On a
+    tree that has been configured but not yet built it is stale or empty, and
+    CONFIG_LOCALVERSION is missing from the answer. Regenerate it first, then
+    read the file.
+    """
+    src = Path(srcdir)
+    run(["make", "-s", "include/config/kernel.release"], cwd=src, quiet=True)
+    release = (src / "include" / "config" / "kernel.release").read_text().strip()
+    if not release:
+        die(f"could not determine kernelrelease for {src}")
+    return release
 
 
 def sudo_write(path, content, mode="0644"):

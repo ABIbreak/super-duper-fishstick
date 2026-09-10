@@ -41,12 +41,20 @@ If the tree has Rust enabled (`CONFIG_RUST=y`, which Fedora does not set by
 default), add `rust rust-src bindgen-cli rustfmt` — the same set
 `qubes-linux-kernel` lists in `BuildRequires`.
 
-Two of these bite people:
+Three of these bite people:
 
 * **`dwarves`** provides `pahole`. Without it, `CONFIG_DEBUG_INFO_BTF=y` fails
   late in the build with an unhelpful message.
 * **`elfutils-libelf-devel`** is needed for objtool. Without it you get
   `fatal error: libelf.h: No such file or directory`.
+* **`gcc-plugin-devel`** is needed for `CONFIG_GCC_PLUGINS`, which the Qubes
+  fragment sets. Its Kconfig entry is gated on a compile test against
+  `gcc-plugin.h`, so without the headers the symbol is simply *unavailable* —
+  `merge_config.sh` accepts it, `alldefconfig` drops it, and you get a kernel
+  quietly missing `GCC_PLUGIN_LATENT_ENTROPY`. This is the exact failure the
+  verification step in [03 §3.5](03-fedora-qubes-config.md#35-applying-the-fragment)
+  exists to catch, and it is not hypothetical: it is what that check caught
+  when these scripts were first run against a real tree.
 
 `scripts/build_deps.py` in this repo installs the whole set.
 
@@ -143,12 +151,32 @@ distro kernel:
 ```console
 [user@kbuild linux-6.12.63]$ ./scripts/config --set-str CONFIG_LOCALVERSION -qubes-test
 [user@kbuild linux-6.12.63]$ ./scripts/config --disable CONFIG_LOCALVERSION_AUTO
-[user@kbuild linux-6.12.63]$ make kernelrelease
-6.12.63-qubes-test
+[user@kbuild linux-6.12.63]$ make olddefconfig
 ```
 
 That string is `uname -r`, the name of the `/lib/modules` directory, and the
 argument you will pass to `qubes-prepare-vm-kernel`. Keep it stable.
+
+**Do not read it back with `make kernelrelease` on a tree you have not built
+yet — it lies.** `KERNELRELEASE` is read from a cached
+`include/config/kernel.release`, and `kernelrelease` is one of the Makefile's
+`no-sync-config-targets`, so nothing regenerates that file. On a freshly
+configured tree it is stale or empty and your `LOCALVERSION` is missing from
+the answer:
+
+```console
+[user@kbuild linux-6.12.63]$ make -s kernelrelease
+6.12.63                       # wrong -- stale
+[user@kbuild linux-6.12.63]$ make -s include/config/kernel.release
+[user@kbuild linux-6.12.63]$ cat include/config/kernel.release
+6.12.63-qubes-test            # correct
+```
+
+This matters more than it looks. If you take the stale string and use it to
+name the image in `/boot`, while `make modules_install` uses the real one, the
+two disagree and `qubes-prepare-vm-kernel` cannot find a matching pair.
+`scripts/build.py` regenerates the file before reading it, via
+`_common.kernelrelease()`.
 
 ## 2.6 Compiling
 

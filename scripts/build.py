@@ -29,8 +29,10 @@ def main():
         c.die(f"No .config in {src} -- run fetch_config.py first")
 
     # `make` is the kernel's build system; driving it as a subprocess is the
-    # only sane option.
-    kver = c.out(["make", "-s", "kernelrelease"], cwd=src)
+    # only sane option. kernelrelease() rather than `make -s kernelrelease`:
+    # the latter returns a stale value on a not-yet-built tree, which would put
+    # the image in /boot under a different version than modules_install uses.
+    kver = c.kernelrelease(src)
 
     c.info(f"Building {kver} with -j{args.jobs}")
     c.run(["make", f"-j{args.jobs}"], cwd=src)
